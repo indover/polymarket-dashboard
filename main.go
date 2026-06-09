@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math/big"
 	"net/http"
 	"os"
 	"regexp"
@@ -98,7 +99,15 @@ func main() {
 		var positions []Position
 		json.Unmarshal(fetchPositionsAll(cfg), &positions)
 
-		today := time.Now().Format("2006-01-02")
+		// Polymarket markets are denominated in ET, and every other handler
+		// (today-positions, all-time-activity) buckets days in America/New_York.
+		// Use ET here too so "today" agrees across the dashboard rather than
+		// following the server's local timezone.
+		etLoc, err := time.LoadLocation("America/New_York")
+		if err != nil {
+			etLoc = time.UTC
+		}
+		today := time.Now().In(etLoc).Format("2006-01-02")
 
 		var rp RealProfit
 		rp.AllTimePositions = len(positions)
@@ -531,18 +540,21 @@ func parseSlotTime(title string, today time.Time) int64 {
 }
 
 // assetFromTitle extracts a short ticker from a Polymarket market title.
+// Crypto up/down markets are titled by ticker ("BTC Up or Down - ...") rather
+// than full name, so match both the ticker prefix and the spelled-out name to
+// avoid bucketing everything into "Other".
 func assetFromTitle(title string) string {
-	t := strings.ToLower(title)
+	t := strings.ToUpper(title)
 	switch {
-	case strings.HasPrefix(t, "bitcoin"):
+	case strings.HasPrefix(t, "BTC") || strings.Contains(t, "BITCOIN"):
 		return "BTC"
-	case strings.HasPrefix(t, "ethereum"):
+	case strings.HasPrefix(t, "ETH") || strings.Contains(t, "ETHEREUM"):
 		return "ETH"
-	case strings.HasPrefix(t, "solana"):
+	case strings.HasPrefix(t, "SOL") || strings.Contains(t, "SOLANA"):
 		return "SOL"
-	case strings.HasPrefix(t, "bnb"):
+	case strings.HasPrefix(t, "BNB") || strings.Contains(t, "BINANCE COIN"):
 		return "BNB"
-	case strings.HasPrefix(t, "xrp"):
+	case strings.HasPrefix(t, "XRP") || strings.Contains(t, "RIPPLE"):
 		return "XRP"
 	default:
 		return "Other"
@@ -987,25 +999,17 @@ func fetchBalance(address string) Balance {
 		return r.Result
 	}
 
-	hexToFloat := func(hex string) float64 {
-		hex = trimHex(hex)
-		if hex == "" || hex == "0" {
-			return 0
-		}
-		v, _ := strconv.ParseInt(hex, 16, 64)
-		return float64(v) / 1_000_000
-	}
-
 	pad := "000000000000000000000000" + strings.ToLower(address[2:])
 
 	var bal Balance
-	bal.USDC = hexToFloat(callRPC("0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359", "0x70a08231"+pad))
-	bal.USDCe = hexToFloat(callRPC("0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174", "0x70a08231"+pad))
+	// ERC-20 stablecoins have 6 decimals.
+	bal.USDC = hexToUnits(callRPC("0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359", "0x70a08231"+pad), 6)
+	bal.USDCe = hexToUnits(callRPC("0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174", "0x70a08231"+pad), 6)
 	// pUSD lives at the V2 proxy, not the EOA — but read it here for callers
 	// that pass the proxy address directly. fetchBalanceCombined merges both.
-	bal.PUSD = hexToFloat(callRPC("0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB", "0x70a08231"+pad))
+	bal.PUSD = hexToUnits(callRPC("0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB", "0x70a08231"+pad), 6)
 
-	// POL balance.
+	// POL balance (18 decimals, wei-denominated).
 	polBody := fmt.Sprintf(`{"jsonrpc":"2.0","method":"eth_getBalance","params":["%s","latest"],"id":1}`, address)
 	resp, err := http.Post(rpc, "application/json", strings.NewReader(polBody))
 	if err == nil {
@@ -1015,12 +1019,28 @@ func fetchBalance(address string) Balance {
 			Result string `json:"result"`
 		}
 		json.Unmarshal(b, &r)
-		hex := trimHex(r.Result)
-		v, _ := strconv.ParseInt(hex, 16, 64)
-		bal.POL = float64(v) / 1e18
+		bal.POL = hexToUnits(r.Result, 18)
 	}
 
 	return bal
+}
+
+// hexToUnits parses a hex-encoded integer (with or without a 0x prefix) and
+// scales it down by 10^decimals. It uses math/big so values that exceed int64
+// don't silently overflow — a POL balance is wei-denominated, so anything above
+// ~9.2 POL would wrap a 64-bit signed parse and read as 0.
+func hexToUnits(hexStr string, decimals int) float64 {
+	hexStr = trimHex(hexStr)
+	if hexStr == "" || hexStr == "0" {
+		return 0
+	}
+	n, ok := new(big.Int).SetString(hexStr, 16)
+	if !ok {
+		return 0
+	}
+	denom := new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(decimals)), nil)
+	f, _ := new(big.Float).Quo(new(big.Float).SetInt(n), new(big.Float).SetInt(denom)).Float64()
+	return f
 }
 
 // fetchBalanceCombined returns USDC.e/USDC/POL from the EOA and pUSD from
