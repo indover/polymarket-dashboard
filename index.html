@@ -1,0 +1,1039 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Polymarket Bot Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0a0e17; color: #e1e5ee; }
+  .header { background: #111827; padding: 20px 30px; border-bottom: 1px solid #1f2937; display: flex; justify-content: space-between; align-items: center; }
+  .header h1 { font-size: 22px; font-weight: 600; }
+  .header h1 span { color: #3b82f6; }
+  .refresh-info { color: #6b7280; font-size: 13px; }
+  .container { max-width: 1400px; margin: 0 auto; padding: 24px; }
+
+  /* Summary cards */
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 28px; }
+  .card { background: #111827; border: 1px solid #1f2937; border-radius: 12px; padding: 18px; }
+  .card .label { font-size: 12px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+  .card .value { font-size: 26px; font-weight: 700; }
+  .card .sub { font-size: 12px; margin-top: 4px; }
+  .green { color: #10b981; }
+  .red { color: #ef4444; }
+  .blue { color: #3b82f6; }
+  .yellow { color: #f59e0b; }
+  .gray { color: #6b7280; }
+
+  /* Charts row */
+  .charts { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 28px; }
+  .chart-box { background: #111827; border: 1px solid #1f2937; border-radius: 12px; padding: 20px; }
+  .chart-box h3 { font-size: 14px; color: #9ca3af; margin-bottom: 14px; }
+  .chart-box canvas { max-height: 250px; }
+
+  /* Positions table */
+  .table-section { background: #111827; border: 1px solid #1f2937; border-radius: 12px; padding: 20px; margin-bottom: 28px; }
+  .table-section h3 { font-size: 16px; margin-bottom: 14px; }
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: left; font-size: 11px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px; padding: 10px 12px; border-bottom: 1px solid #1f2937; }
+  td { padding: 12px; border-bottom: 1px solid #1f2937; font-size: 13px; }
+  tr:hover { background: #1f2937; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+  .badge-pending { background: #1e3a5f; color: #60a5fa; }
+  .badge-won { background: #064e3b; color: #34d399; }
+  .badge-lost { background: #7f1d1d; color: #fca5a5; }
+  .badge-redeem { background: #7c3aed; color: #c4b5fd; }
+
+  .btn { display: inline-block; padding: 10px 24px; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; border: none; transition: all 0.2s; }
+  .btn-redeem { background: #7c3aed; color: #fff; }
+  .btn-redeem:hover { background: #6d28d9; }
+  .btn-redeem:disabled { background: #4c1d95; opacity: 0.5; cursor: not-allowed; }
+  .redeem-status { margin-top: 12px; font-size: 13px; padding: 10px; border-radius: 8px; display: none; }
+  .redeem-status.success { display: block; background: #064e3b; color: #34d399; }
+  .redeem-status.error { display: block; background: #7f1d1d; color: #fca5a5; }
+  .redeem-status.info { display: block; background: #1e3a5f; color: #60a5fa; }
+
+  /* Trades */
+  .trade-row td:first-child { font-family: monospace; font-size: 11px; color: #6b7280; }
+
+  /* Pagination */
+  .pagination { display: flex; align-items: center; gap: 12px; margin-top: 14px; font-size: 13px; }
+  .pagination button { background: #1f2937; border: 1px solid #374151; color: #e1e5ee; padding: 6px 14px; border-radius: 6px; cursor: pointer; }
+  .pagination button:hover:not(:disabled) { background: #374151; }
+  .pagination button:disabled { opacity: 0.35; cursor: not-allowed; }
+  .pagination .page-info { color: #6b7280; }
+
+  @media (max-width: 768px) {
+    .charts { grid-template-columns: 1fr; }
+    .cards { grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1><span>Polymarket</span> Bot Dashboard</h1>
+  <div class="refresh-info">Auto-refreshes every 30s | <span id="lastUpdate">-</span></div>
+</div>
+
+<div class="container">
+  <!-- Summary Cards -->
+  <div class="cards" id="cards"></div>
+
+  <!-- Real Profit Cards -->
+  <div class="cards" id="realProfitCards" style="margin-top:-8px;margin-bottom:28px;"></div>
+
+  <!-- Today's Performance -->
+  <div class="cards" id="todayStatsCards" style="margin-top:-8px;margin-bottom:28px;"></div>
+
+  <!-- Today's Positions -->
+  <div class="table-section" id="todayPosSection">
+    <h3>Today's Positions <span id="todayPosCount" class="gray"></span></h3>
+    <table>
+      <thead>
+        <tr>
+          <th>Market</th>
+          <th>Outcome</th>
+          <th>Shares</th>
+          <th>Invested</th>
+          <th>Value</th>
+          <th>PnL</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody id="todayPosBody"></tbody>
+    </table>
+    <div class="pagination">
+      <button id="todayPosPrev" onclick="changePage('todayPos',-1)">← Prev</button>
+      <span class="page-info" id="todayPosPageInfo"></span>
+      <button id="todayPosNext" onclick="changePage('todayPos',1)">Next →</button>
+    </div>
+  </div>
+
+  <!-- Asset Performance -->
+  <div class="charts" style="margin-bottom:28px;">
+    <div class="table-section" style="margin-bottom:0;">
+      <h3>Asset Performance — All Time</h3>
+      <table>
+        <thead><tr><th>Asset</th><th>Bets</th><th>Won</th><th>Lost</th><th>Win %</th><th>Invested</th><th>Redeemed</th><th>Net PnL</th></tr></thead>
+        <tbody id="assetAllTimeBody"></tbody>
+      </table>
+    </div>
+    <div class="table-section" style="margin-bottom:0;">
+      <h3>Asset Performance — Today</h3>
+      <table>
+        <thead><tr><th>Asset</th><th>Bets</th><th>Won</th><th>Lost</th><th>Win %</th><th>Invested</th><th>Value</th><th>Net PnL</th></tr></thead>
+        <tbody id="assetTodayBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Daily Bets & PnL + Today Hourly -->
+  <div class="charts" style="margin-bottom:28px;">
+    <div class="chart-box">
+      <h3>Daily Bets &amp; PnL (all time)</h3>
+      <canvas id="dailyBetsPnlChart"></canvas>
+    </div>
+    <div class="chart-box">
+      <h3>Today Hourly Breakdown</h3>
+      <canvas id="hourlyChart"></canvas>
+    </div>
+  </div>
+
+  <!-- Charts row 1: per-position -->
+  <div class="charts">
+    <div class="chart-box">
+      <h3>PnL by Position (current page)</h3>
+      <canvas id="pnlChart"></canvas>
+    </div>
+    <div class="chart-box">
+      <h3>Win / Loss / Pending (all time)</h3>
+      <canvas id="winLossChart"></canvas>
+    </div>
+  </div>
+
+  <!-- All-Time Stats Cards -->
+  <div class="cards" id="allTimeCards" style="margin-bottom:28px;"></div>
+
+  <!-- Charts row 2: daily breakdown -->
+  <div class="charts" style="margin-bottom:28px;">
+    <div class="chart-box">
+      <h3>Daily Wins &amp; Losses (all time)</h3>
+      <canvas id="dailyWinLossChart"></canvas>
+    </div>
+    <div class="chart-box">
+      <h3>Daily PnL (all time)</h3>
+      <canvas id="dailyPnlChart"></canvas>
+    </div>
+  </div>
+
+  <!-- Charts row 3: all-time trends -->
+  <div class="charts" style="margin-bottom:28px;">
+    <div class="chart-box">
+      <h3>Cumulative PnL (all time)</h3>
+      <canvas id="cumulativePnlChart"></canvas>
+    </div>
+    <div class="chart-box">
+      <h3>Win Rate by Asset (all time)</h3>
+      <canvas id="assetWinRateChart"></canvas>
+    </div>
+  </div>
+
+  <!-- Positions Table -->
+  <div class="table-section">
+    <h3>Open Positions <span id="posCount" class="gray"></span></h3>
+    <table>
+      <thead>
+        <tr>
+          <th>Market</th>
+          <th>Outcome</th>
+          <th>Shares</th>
+          <th>Avg Entry</th>
+          <th>Current</th>
+          <th>Invested</th>
+          <th>Value</th>
+          <th>PnL</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody id="positionsBody"></tbody>
+    </table>
+    <div class="pagination">
+      <button id="posPrev" onclick="changePage('pos',-1)">← Prev</button>
+      <span class="page-info" id="posPageInfo"></span>
+      <button id="posNext" onclick="changePage('pos',1)">Next →</button>
+    </div>
+  </div>
+
+  <!-- Trades Table -->
+  <div class="table-section">
+    <h3>Trade History <span id="tradeCount" class="gray"></span></h3>
+    <table>
+      <thead>
+        <tr>
+          <th>Time</th>
+          <th>Market</th>
+          <th>Side</th>
+          <th>Outcome</th>
+          <th>Price</th>
+          <th>Shares</th>
+          <th>Cost</th>
+          <th>Fee</th>
+          <th>Tx</th>
+        </tr>
+      </thead>
+      <tbody id="tradesBody"></tbody>
+    </table>
+    <div class="pagination">
+      <button id="tradePrev" onclick="changePage('trade',-1)">← Prev</button>
+      <span class="page-info" id="tradePageInfo"></span>
+      <button id="tradeNext" onclick="changePage('trade',1)">Next →</button>
+    </div>
+  </div>
+
+  <!-- Redeemable Positions — disabled; Polymarket handles redemption in V2.
+  <div class="table-section" id="redeemSection" style="display:none;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+      <h3>Redeemable Positions <span id="redeemCount" class="gray"></span> <span id="redeemValue" class="green"></span></h3>
+      <button class="btn btn-redeem" id="redeemBtn" onclick="redeemAll()">Redeem All</button>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>Market</th>
+          <th>Shares</th>
+          <th>Value</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody id="redeemBody"></tbody>
+    </table>
+    <div id="redeemStatus" class="redeem-status"></div>
+  </div>
+  -->
+  <div id="redeemSection" style="display:none;"></div>
+
+  <!-- Wallet -->
+  <div class="table-section">
+    <h3>Wallet Balances</h3>
+    <div id="walletInfo" style="display: flex; gap: 30px; padding: 10px 0;"></div>
+  </div>
+</div>
+
+<script>
+let pnlChart, winLossChart, dailyWinLossChart, dailyPnlChart, cumulativePnlChart, assetWinRateChart, dailyBetsPnlChart, hourlyChart;
+const PAGE_SIZE = 25;
+let allPositions = [];
+let allTrades = [];
+let allTodayPositions = [];
+let posPage = 0;
+let tradePage = 0;
+let todayPosPage = 0;
+
+function changePage(type, dir) {
+  if (type === 'pos') {
+    posPage = Math.max(0, Math.min(posPage + dir, Math.ceil(allPositions.length / PAGE_SIZE) - 1));
+    renderPositionsPage();
+  } else if (type === 'todayPos') {
+    todayPosPage = Math.max(0, Math.min(todayPosPage + dir, Math.ceil(allTodayPositions.length / PAGE_SIZE) - 1));
+    renderTodayPositions();
+  } else {
+    tradePage = Math.max(0, Math.min(tradePage + dir, Math.ceil(allTrades.length / PAGE_SIZE) - 1));
+    renderTradesPage();
+  }
+}
+
+async function fetchData() {
+  try {
+    const [summaryRes, posRes, tradesRes, balRes, rpRes, actRes, todayPosRes] = await Promise.all([
+      fetch('/api/summary'),
+      fetch('/api/positions'),
+      fetch('/api/trades'),
+      fetch('/api/balance'),
+      fetch('/api/real-profit'),
+      fetch('/api/all-time-activity'),
+      fetch('/api/today-positions'),
+    ]);
+    const summary = await summaryRes.json();
+    const positions = await posRes.json();
+    const trades = await tradesRes.json();
+    const balance = await balRes.json();
+    const realProfit = await rpRes.json();
+    const activity = await actRes.json();
+    const todayPositions = await todayPosRes.json();
+
+    // renderCards(summary);
+    allTodayPositions = todayPositions || [];
+    renderRealProfitCards(realProfit);
+    renderTodayStats(realProfit, activity);
+    todayPosPage = 0;
+    renderTodayPositions();
+    renderAssetPerformance(activity);
+    renderDailyBetsPnl(activity);
+    renderHourlyChart();
+    // Sort newest first and store globally for pagination.
+    allPositions = (positions || []).slice().sort((a, b) => {
+      // Sort by endDate desc, then title desc for same-day ordering.
+      if (b.endDate !== a.endDate) return b.endDate > a.endDate ? 1 : -1;
+      return (b.title || '').localeCompare(a.title || '');
+    });
+    allTrades = (trades || []).slice().sort((a, b) => {
+      return parseInt(b.match_time || 0) - parseInt(a.match_time || 0);
+    });
+    posPage = 0;
+    tradePage = 0;
+    renderPositionsPage();
+    renderTradesPage();
+    renderWallet(balance);
+    renderPnlChart(allPositions.slice(posPage * PAGE_SIZE, posPage * PAGE_SIZE + PAGE_SIZE));
+    renderAllTimeStats(activity);
+    renderDailyCharts(activity);
+    renderCumulativePnl(activity);
+    renderAssetWinRate(activity);
+    renderWinLossChart(activity);
+
+    document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString();
+  } catch (e) {
+    console.error('Fetch error:', e);
+  }
+}
+
+function renderCards(s) {
+  const pnlClass = s.totalPnl >= 0 ? 'green' : 'red';
+  const pnlSign = s.totalPnl >= 0 ? '+' : '';
+  document.getElementById('cards').innerHTML = `
+    <div class="card">
+      <div class="label">Total Invested</div>
+      <div class="value blue">$${s.totalInvested.toFixed(2)}</div>
+      <div class="sub gray">${s.totalTrades} trades</div>
+    </div>
+    <div class="card">
+      <div class="label">Current Value</div>
+      <div class="value">$${s.currentValue.toFixed(2)}</div>
+      <div class="sub gray">${s.totalPositions} positions</div>
+    </div>
+    <div class="card">
+      <div class="label">Total PnL</div>
+      <div class="value ${pnlClass}">${pnlSign}$${s.totalPnl.toFixed(2)}</div>
+      <div class="sub ${pnlClass}">${pnlSign}${((s.totalPnl / Math.max(s.totalInvested, 0.01)) * 100).toFixed(1)}%</div>
+    </div>
+    <div class="card">
+      <div class="label">Win Rate</div>
+      <div class="value ${s.winRate >= 50 ? 'green' : 'yellow'}">${s.winRate.toFixed(0)}%</div>
+      <div class="sub gray">${s.winCount}W / ${s.lossCount}L / ${s.pendingCount}P</div>
+    </div>
+    <div class="card">
+      <div class="label">Avg Entry Price</div>
+      <div class="value">$${s.avgEntry.toFixed(4)}</div>
+      <div class="sub gray">target < $0.40</div>
+    </div>
+    <div class="card">
+      <div class="label">USDC Balance</div>
+      <div class="value blue">$${s.usdcBalance.toFixed(2)}</div>
+      <div class="sub gray">wallet on Polygon</div>
+    </div>
+  `;
+}
+
+function renderRealProfitCards(rp) {
+  if (!rp || rp.error) return;
+  // Compute today's real PnL from settled positions only (WON + LOST).
+  let settledPnl = 0, settledInvested = 0, settledCount = 0, pendingCount = 0, totalInvested = 0, totalValue = 0;
+  for (const p of allTodayPositions) {
+    totalInvested += p.invested || 0;
+    totalValue += p.value || 0;
+    if (p.status === 'WON' || p.status === 'LOST') {
+      settledInvested += p.invested || 0;
+      settledPnl += (p.value || 0) - (p.invested || 0);
+      settledCount++;
+    } else {
+      pendingCount++;
+    }
+  }
+  const todayClass = settledPnl >= 0 ? 'green' : 'red';
+  const todaySign = settledPnl >= 0 ? '+' : '';
+
+  // Total assets = liquid USDC in wallet + winning shares waiting to be redeemed.
+  const totalAssets = (rp.walletUSDC || 0) + (rp.redeemableValue || 0);
+
+  document.getElementById('realProfitCards').innerHTML = `
+    <div class="card" style="border-color:#374151;">
+      <div class="label">Today's ROI</div>
+      <div class="value ${todayClass}">${settledInvested > 0 ? (todaySign + (settledPnl / settledInvested * 100).toFixed(1) + '%') : '—'}</div>
+      <div class="sub gray">${todaySign}$${settledPnl.toFixed(2)} on $${settledInvested.toFixed(2)} settled</div>
+    </div>
+    <div class="card" style="border-color:#374151;">
+      <div class="label">Today's Invested</div>
+      <div class="value blue">$${totalInvested.toFixed(2)}</div>
+      <div class="sub gray">now worth $${totalValue.toFixed(2)}</div>
+    </div>
+    <div class="card" style="border-color:#10b981;">
+      <div class="label">Total Assets</div>
+      <div class="value green">$${totalAssets.toFixed(2)}</div>
+      <div class="sub gray">$${(rp.walletUSDC||0).toFixed(2)} wallet + $${(rp.redeemableValue||0).toFixed(2)} pending</div>
+    </div>
+    <div class="card" style="border-color:#7c3aed;">
+      <div class="label">Redeemable Now</div>
+      <div class="value green">$${(rp.redeemableValue||0).toFixed(2)}</div>
+      <div class="sub gray">${rp.redeemableCount||0} won positions · click Redeem All ↓</div>
+    </div>
+  `;
+}
+
+function renderTodayStats(rp, activity) {
+  if (!rp || rp.error) return;
+  // Compute all today stats from allTodayPositions (consistent with Today's Positions table).
+  let wins = 0, losses = 0, pending = 0;
+  let settledInvested = 0, settledValue = 0, lostAmt = 0, redeemedAmt = 0;
+  for (const p of allTodayPositions) {
+    if (p.status === 'WON') {
+      wins++;
+      settledInvested += p.invested || 0;
+      settledValue += p.value || 0;
+      redeemedAmt += p.value || 0;
+    } else if (p.status === 'LOST') {
+      losses++;
+      settledInvested += p.invested || 0;
+      lostAmt += p.invested || 0;
+    } else {
+      pending++;
+    }
+  }
+  const bets = allTodayPositions.length;
+  const settled = wins + losses;
+  const winRate = settled > 0 ? (wins / settled * 100).toFixed(0) : '-';
+  const winRateClass = settled === 0 ? 'gray' : (wins / settled >= 0.5 ? 'green' : 'red');
+
+  const todayNetProfit = settledValue - settledInvested;
+  const netClass = todayNetProfit >= 0 ? 'green' : 'red';
+  const netSign = todayNetProfit >= 0 ? '+' : '';
+
+  document.getElementById('todayStatsCards').innerHTML = `
+    <div class="card" style="border-color:#374151;">
+      <div class="label">Today's Bets</div>
+      <div class="value blue">${bets}</div>
+      <div class="sub gray">${wins}W / ${losses}L · ${pending} open</div>
+    </div>
+    <div class="card" style="border-color:#374151;">
+      <div class="label">Today's Win Rate</div>
+      <div class="value ${winRateClass}">${winRate}${settled > 0 ? '%' : ''}</div>
+      <div class="sub gray">${wins}W / ${losses}L</div>
+    </div>
+    <div class="card" style="border-color:#10b981;">
+      <div class="label">Today's Redeemed</div>
+      <div class="value green">$${redeemedAmt.toFixed(2)}</div>
+      <div class="sub gray">${wins} won bets</div>
+    </div>
+    <div class="card" style="border-color:${todayNetProfit >= 0 ? '#10b981' : '#ef4444'};">
+      <div class="label">Today's Net Profit</div>
+      <div class="value ${netClass}">${netSign}$${todayNetProfit.toFixed(2)}</div>
+      <div class="sub gray">won $${settledValue.toFixed(2)} − invested $${settledInvested.toFixed(2)}</div>
+    </div>
+    <div class="card" style="border-color:#ef4444;">
+      <div class="label">Today's Losses</div>
+      <div class="value red">-$${lostAmt.toFixed(2)}</div>
+      <div class="sub gray">${losses} lost bets</div>
+    </div>
+  `;
+}
+
+function assetFromTitle(title) {
+  const t = (title || '').toLowerCase();
+  if (t.startsWith('bitcoin')) return 'BTC';
+  if (t.startsWith('ethereum')) return 'ETH';
+  if (t.startsWith('solana')) return 'SOL';
+  if (t.startsWith('bnb')) return 'BNB';
+  if (t.startsWith('xrp')) return 'XRP';
+  return 'Other';
+}
+
+function renderAssetPerformance(activity) {
+  // All-time from activity.byAsset
+  const allTimeRows = (activity && activity.byAsset || []).map(a => {
+    const losses = Math.max(0, a.bets - a.wins);
+    const settled = a.wins + losses;
+    const winPct = settled > 0 ? (a.wins / settled * 100).toFixed(0) : '-';
+    const net = a.redeemed - a.invested;
+    const netClass = net >= 0 ? 'green' : 'red';
+    const netSign = net >= 0 ? '+' : '';
+    return `<tr>
+      <td><strong>${a.asset}</strong></td>
+      <td>${a.bets}</td>
+      <td class="green">${a.wins}</td>
+      <td class="red">${losses}</td>
+      <td>${winPct}%</td>
+      <td>$${a.invested.toFixed(2)}</td>
+      <td>$${a.redeemed.toFixed(2)}</td>
+      <td class="${netClass}">${netSign}$${net.toFixed(2)}</td>
+    </tr>`;
+  }).join('');
+  document.getElementById('assetAllTimeBody').innerHTML = allTimeRows || '<tr><td colspan="8" class="gray">No data</td></tr>';
+
+  // Today from allTodayPositions grouped by asset
+  const groups = {};
+  for (const p of allTodayPositions) {
+    const asset = assetFromTitle(p.title);
+    if (!groups[asset]) groups[asset] = { bets: 0, wins: 0, losses: 0, invested: 0, value: 0 };
+    const g = groups[asset];
+    g.bets++;
+    if (p.status === 'WON') g.wins++;
+    else if (p.status === 'LOST') g.losses++;
+    g.invested += p.invested || 0;
+    g.value += p.value || 0;
+  }
+  const todayRows = Object.keys(groups).sort().map(asset => {
+    const g = groups[asset];
+    const settled = g.wins + g.losses;
+    const winPct = settled > 0 ? (g.wins / settled * 100).toFixed(0) : '-';
+    const net = g.value - g.invested;
+    const netClass = net >= 0 ? 'green' : 'red';
+    const netSign = net >= 0 ? '+' : '';
+    return `<tr>
+      <td><strong>${asset}</strong></td>
+      <td>${g.bets}</td>
+      <td class="green">${g.wins}</td>
+      <td class="red">${g.losses}</td>
+      <td>${winPct}%</td>
+      <td>$${g.invested.toFixed(2)}</td>
+      <td>$${g.value.toFixed(2)}</td>
+      <td class="${netClass}">${netSign}$${net.toFixed(2)}</td>
+    </tr>`;
+  }).join('');
+  document.getElementById('assetTodayBody').innerHTML = todayRows || '<tr><td colspan="8" class="gray">No data</td></tr>';
+}
+
+function renderDailyBetsPnl(activity) {
+  if (!activity || !activity.byDate) return;
+  const dates = activity.byDate.map(d => d.date.slice(5));
+  const wins = activity.byDate.map(d => d.wins);
+  const losses = activity.byDate.map(d => -Math.max(0, d.bets - d.wins));
+  const pnl = activity.byDate.map(d => parseFloat((d.redeemed - d.invested).toFixed(2)));
+
+  if (dailyBetsPnlChart) dailyBetsPnlChart.destroy();
+  dailyBetsPnlChart = new Chart(document.getElementById('dailyBetsPnlChart').getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels: dates,
+      datasets: [
+        { label: 'Won', data: wins, backgroundColor: '#10b981', borderRadius: 3, yAxisID: 'y', order: 2 },
+        { label: 'Lost', data: losses, backgroundColor: '#ef4444', borderRadius: 3, yAxisID: 'y', order: 2 },
+        { label: 'PnL ($)', data: pnl, type: 'line', borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.1)', pointBackgroundColor: pnl.map(v => v >= 0 ? '#10b981' : '#ef4444'), pointRadius: 3, fill: true, tension: 0.3, yAxisID: 'y1', order: 1 },
+      ]
+    },
+    options: {
+      responsive: true,
+      scales: {
+        x: { ticks: { color: '#6b7280', font: { size: 10 } }, grid: { display: false } },
+        y: { position: 'left', title: { display: true, text: 'Bets', color: '#6b7280' }, ticks: { color: '#6b7280' }, grid: { color: '#1f2937' } },
+        y1: { position: 'right', title: { display: true, text: 'PnL ($)', color: '#6b7280' }, ticks: { color: '#3b82f6', callback: v => '$' + v }, grid: { display: false } },
+      },
+      plugins: { legend: { position: 'bottom', labels: { color: '#9ca3af', padding: 12 } } }
+    }
+  });
+}
+
+function renderHourlyChart() {
+  // Group allTodayPositions by hour of purchase.
+  const hours = {};
+  for (let h = 0; h < 24; h++) hours[h] = { wins: 0, losses: 0, pending: 0, pnl: 0 };
+
+  for (const p of allTodayPositions) {
+    if (!p.timestamp) continue;
+    const h = new Date(p.timestamp * 1000).getHours();
+    if (p.status === 'WON') {
+      hours[h].wins++;
+      hours[h].pnl += (p.value || 0) - (p.invested || 0);
+    } else if (p.status === 'LOST') {
+      hours[h].losses++;
+      hours[h].pnl -= (p.invested || 0);
+    } else {
+      hours[h].pending++;
+    }
+  }
+
+  // Only show hours that have data or are between first and last active hour.
+  const activeHours = Object.keys(hours).map(Number).filter(h => hours[h].wins + hours[h].losses + hours[h].pending > 0);
+  if (activeHours.length === 0) {
+    if (hourlyChart) hourlyChart.destroy();
+    return;
+  }
+  const minH = Math.min(...activeHours);
+  const maxH = Math.max(...activeHours);
+  const labels = [];
+  const winsData = [], lossesData = [], pendingData = [], pnlData = [];
+  for (let h = minH; h <= maxH; h++) {
+    labels.push(h.toString().padStart(2, '0') + ':00');
+    winsData.push(hours[h].wins);
+    lossesData.push(-hours[h].losses);
+    pendingData.push(hours[h].pending);
+    pnlData.push(parseFloat(hours[h].pnl.toFixed(2)));
+  }
+
+  if (hourlyChart) hourlyChart.destroy();
+  hourlyChart = new Chart(document.getElementById('hourlyChart').getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        { label: 'Won', data: winsData, backgroundColor: '#10b981', borderRadius: 3, yAxisID: 'y', order: 2 },
+        { label: 'Lost', data: lossesData, backgroundColor: '#ef4444', borderRadius: 3, yAxisID: 'y', order: 2 },
+        { label: 'Pending', data: pendingData, backgroundColor: '#3b82f6', borderRadius: 3, yAxisID: 'y', order: 2 },
+        { label: 'PnL ($)', data: pnlData, type: 'line', borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,0.1)', pointBackgroundColor: pnlData.map(v => v >= 0 ? '#10b981' : '#ef4444'), pointRadius: 4, fill: true, tension: 0.3, yAxisID: 'y1', order: 1 },
+      ]
+    },
+    options: {
+      responsive: true,
+      scales: {
+        x: { ticks: { color: '#6b7280' }, grid: { display: false } },
+        y: { position: 'left', title: { display: true, text: 'Bets', color: '#6b7280' }, ticks: { color: '#6b7280' }, grid: { color: '#1f2937' } },
+        y1: { position: 'right', title: { display: true, text: 'PnL ($)', color: '#6b7280' }, ticks: { color: '#f59e0b', callback: v => '$' + v }, grid: { display: false } },
+      },
+      plugins: { legend: { position: 'bottom', labels: { color: '#9ca3af', padding: 12 } } }
+    }
+  });
+}
+
+function renderTodayPositions() {
+  const total = allTodayPositions.length;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const start = todayPosPage * PAGE_SIZE;
+  const page = allTodayPositions.slice(start, start + PAGE_SIZE);
+
+  document.getElementById('todayPosCount').textContent = `(${total})`;
+  document.getElementById('todayPosPageInfo').textContent = total > 0
+    ? `Page ${todayPosPage + 1} of ${totalPages} · ${start + 1}–${Math.min(start + PAGE_SIZE, total)} of ${total}`
+    : '';
+  document.getElementById('todayPosPrev').disabled = todayPosPage === 0;
+  document.getElementById('todayPosNext').disabled = todayPosPage >= totalPages - 1;
+
+  document.getElementById('todayPosBody').innerHTML = page.map(p => {
+    const pnlClass = p.pnl >= 0 ? 'green' : 'red';
+    const sign = p.pnl >= 0 ? '+' : '';
+    let badgeClass = 'badge-pending', status = p.status || 'PENDING';
+    if (status === 'WON') badgeClass = 'badge-won';
+    else if (status === 'LOST') badgeClass = 'badge-lost';
+    const title = p.title || '—';
+    const invested = p.invested ? `$${p.invested.toFixed(2)}` : '—';
+    const value = p.value ? `$${p.value.toFixed(2)}` : '—';
+    const pnl = p.invested ? `${sign}$${p.pnl.toFixed(2)}` : '—';
+    return `<tr>
+      <td style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${title}">${title}</td>
+      <td>${p.outcome || '—'}</td>
+      <td>${p.size.toFixed(2)}</td>
+      <td>${invested}</td>
+      <td>${value}</td>
+      <td class="${pnlClass}">${pnl}</td>
+      <td><span class="badge ${badgeClass}">${status}</span></td>
+    </tr>`;
+  }).join('');
+}
+
+function renderPositionsPage() {
+  const total = allPositions.length;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const start = posPage * PAGE_SIZE;
+  const page = allPositions.slice(start, start + PAGE_SIZE);
+
+  document.getElementById('posCount').textContent = `(${total})`;
+  document.getElementById('posPageInfo').textContent = `Page ${posPage + 1} of ${totalPages} · ${start + 1}–${Math.min(start + PAGE_SIZE, total)} of ${total}`;
+  document.getElementById('posPrev').disabled = posPage === 0;
+  document.getElementById('posNext').disabled = posPage >= totalPages - 1;
+
+  document.getElementById('positionsBody').innerHTML = page.map(p => {
+    const pnlClass = p.cashPnl >= 0 ? 'green' : 'red';
+    const sign = p.cashPnl >= 0 ? '+' : '';
+    let status, badgeClass;
+    if (p.curPrice >= 0.99 || (p.redeemable && p.cashPnl > 0)) {
+      status = 'WON'; badgeClass = 'badge-won';
+    } else if (p.curPrice <= 0.01 || (p.redeemable && p.cashPnl <= 0)) {
+      status = 'LOST'; badgeClass = 'badge-lost';
+    } else {
+      status = 'PENDING'; badgeClass = 'badge-pending';
+    }
+    const title = p.title || p.conditionId.slice(0, 16) + '...';
+    return `<tr>
+      <td style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${p.title}">${title}</td>
+      <td>${p.outcome || 'Up'}</td>
+      <td>${p.size.toFixed(2)}</td>
+      <td>$${p.avgPrice.toFixed(4)}</td>
+      <td>$${p.curPrice.toFixed(4)}</td>
+      <td>$${p.initialValue.toFixed(2)}</td>
+      <td>$${p.currentValue.toFixed(2)}</td>
+      <td class="${pnlClass}">${sign}$${p.cashPnl.toFixed(4)} (${sign}${p.percentPnl.toFixed(1)}%)</td>
+      <td><span class="badge ${badgeClass}">${status}</span></td>
+    </tr>`;
+  }).join('');
+}
+
+function renderTradesPage() {
+  const total = allTrades.length;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const start = tradePage * PAGE_SIZE;
+  const page = allTrades.slice(start, start + PAGE_SIZE);
+
+  document.getElementById('tradeCount').textContent = `(${total})`;
+  document.getElementById('tradePageInfo').textContent = `Page ${tradePage + 1} of ${totalPages} · ${start + 1}–${Math.min(start + PAGE_SIZE, total)} of ${total}`;
+  document.getElementById('tradePrev').disabled = tradePage === 0;
+  document.getElementById('tradeNext').disabled = tradePage >= totalPages - 1;
+
+  document.getElementById('tradesBody').innerHTML = page.map(t => {
+    const price = parseFloat(t.price);
+    const size = parseFloat(t.size);
+    const cost = (price * size).toFixed(2);
+    const feeBps = parseInt(t.fee_rate_bps || '0');
+    const fee = (cost * feeBps / 10000).toFixed(4);
+    const matchTime = t.match_time ? new Date(parseInt(t.match_time) * 1000).toLocaleString() : '-';
+    const txShort = t.transaction_hash ? t.transaction_hash.slice(0, 10) + '...' : '-';
+    const txLink = t.transaction_hash ? `https://polygonscan.com/tx/${t.transaction_hash}` : '#';
+    const title = t.title || t.market.slice(0, 16) + '...';
+    return `<tr class="trade-row">
+      <td>${matchTime}</td>
+      <td style="max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${title}">${title}</td>
+      <td>${t.side}</td>
+      <td>${t.outcome}</td>
+      <td>$${price.toFixed(4)}</td>
+      <td>${size.toFixed(2)}</td>
+      <td>$${cost}</td>
+      <td>$${fee}</td>
+      <td><a href="${txLink}" target="_blank" style="color:#3b82f6">${txShort}</a></td>
+    </tr>`;
+  }).join('');
+}
+
+function renderWallet(b) {
+  document.getElementById('walletInfo').innerHTML = `
+    <div><span class="gray">pUSD:</span> <strong>$${(b.pusd||0).toFixed(2)}</strong></div>
+    <div><span class="gray">USDC.e:</span> <strong>$${b.usdce.toFixed(2)}</strong></div>
+    <div><span class="gray">Native USDC:</span> <strong>$${b.usdc.toFixed(2)}</strong></div>
+    <div><span class="gray">POL:</span> <strong>${b.pol.toFixed(4)}</strong></div>
+  `;
+}
+
+function renderPnlChart(positions) {
+  const ctx = document.getElementById('pnlChart').getContext('2d');
+  const labels = positions.map(p => {
+    const t = p.title || '';
+    const match = t.match(/(\w+) Up or Down/);
+    const time = t.match(/(\d+:\d+[AP]M)-(\d+:\d+[AP]M)/);
+    return match ? `${match[1]} ${time ? time[1] : ''}` : t.slice(0, 20);
+  });
+  const data = positions.map(p => p.cashPnl);
+  const colors = data.map(v => v >= 0 ? '#10b981' : '#ef4444');
+
+  if (pnlChart) pnlChart.destroy();
+  pnlChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        data,
+        backgroundColor: colors,
+        borderRadius: 4,
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { color: '#6b7280', font: { size: 10 } }, grid: { display: false } },
+        y: { ticks: { color: '#6b7280', callback: v => '$' + v.toFixed(2) }, grid: { color: '#1f2937' } }
+      }
+    }
+  });
+}
+
+function renderWinLossChart(act) {
+  if (!act) return;
+  const wins    = act.totalWins    || 0;
+  const losses  = act.totalLosses  || 0;
+  const pending = act.totalPending || 0;
+  const ctx = document.getElementById('winLossChart').getContext('2d');
+  if (winLossChart) winLossChart.destroy();
+  winLossChart = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels: [
+        `Won (${wins})`,
+        `Lost (${losses})`,
+        `Pending (${pending})`,
+      ],
+      datasets: [{
+        data: [wins, losses, pending],
+        backgroundColor: ['#10b981', '#ef4444', '#3b82f6'],
+        borderWidth: 0,
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { position: 'bottom', labels: { color: '#9ca3af', padding: 16 } },
+        tooltip: {
+          callbacks: {
+            label: ctx => {
+              const total = wins + losses + pending;
+              const pct = total > 0 ? (ctx.parsed / total * 100).toFixed(1) : 0;
+              return ` ${ctx.parsed} bets (${pct}%)`;
+            }
+          }
+        }
+      }
+    }
+  });
+}
+
+function renderAllTimeStats(act) {
+  if (!act || !act.totalBets) return;
+  const pnlClass = act.netPnl >= 0 ? 'green' : 'red';
+  const pnlSign  = act.netPnl >= 0 ? '+' : '';
+  document.getElementById('allTimeCards').innerHTML = `
+    <div class="card" style="border-color:#374151;">
+      <div class="label">All-Time Bets</div>
+      <div class="value blue">${act.totalBets}</div>
+      <div class="sub gray">${act.totalWins}W / ${act.totalLosses}L / ${act.totalPending} open</div>
+    </div>
+    <div class="card" style="border-color:#374151;">
+      <div class="label">All-Time Win Rate</div>
+      <div class="value ${act.winRate >= 50 ? 'green' : 'yellow'}">${(act.winRate||0).toFixed(1)}%</div>
+      <div class="sub gray">${act.totalWins + act.totalLosses} settled</div>
+    </div>
+    <div class="card" style="border-color:#374151;">
+      <div class="label">All-Time Invested</div>
+      <div class="value blue">$${(act.totalInvested||0).toFixed(2)}</div>
+      <div class="sub gray">total USDC spent on bets</div>
+    </div>
+    <div class="card" style="border-color:#374151;">
+      <div class="label">All-Time Net PnL</div>
+      <div class="value ${pnlClass}">${pnlSign}$${(act.netPnl||0).toFixed(2)}</div>
+      <div class="sub gray">redeemed $${(act.totalRedeemed||0).toFixed(2)}</div>
+    </div>
+  `;
+}
+
+function renderDailyCharts(act) {
+  if (!act || !act.byDate) return;
+  const dates   = act.byDate.map(d => d.date.slice(5));
+  const wins    = act.byDate.map(d => d.wins);
+  const losses  = act.byDate.map(d => Math.max(0, d.bets - d.wins));
+  const pnls    = act.byDate.map(d => parseFloat((d.redeemed - d.invested).toFixed(2)));
+
+  if (dailyWinLossChart) dailyWinLossChart.destroy();
+  dailyWinLossChart = new Chart(document.getElementById('dailyWinLossChart').getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels: dates,
+      datasets: [
+        { label: 'Wins',   data: wins,   backgroundColor: '#10b981', borderRadius: 3 },
+        { label: 'Losses', data: losses, backgroundColor: '#ef4444', borderRadius: 3 },
+      ]
+    },
+    options: {
+      responsive: true,
+      scales: {
+        x: { stacked: true, ticks: { color: '#6b7280', font: { size: 10 } }, grid: { display: false } },
+        y: { stacked: true, ticks: { color: '#6b7280' }, grid: { color: '#1f2937' } }
+      },
+      plugins: { legend: { position: 'bottom', labels: { color: '#9ca3af', padding: 12 } } }
+    }
+  });
+
+  if (dailyPnlChart) dailyPnlChart.destroy();
+  dailyPnlChart = new Chart(document.getElementById('dailyPnlChart').getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels: dates,
+      datasets: [{ label: 'PnL ($)', data: pnls, backgroundColor: pnls.map(v => v >= 0 ? '#10b981' : '#ef4444'), borderRadius: 3 }]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { color: '#6b7280', font: { size: 10 } }, grid: { display: false } },
+        y: { ticks: { color: '#6b7280', callback: v => '$' + v.toFixed(2) }, grid: { color: '#1f2937' } }
+      }
+    }
+  });
+}
+
+function renderCumulativePnl(act) {
+  if (!act || !act.byDate) return;
+  const labels = [];
+  const data   = [];
+  let cum = 0;
+  for (const d of act.byDate) {
+    cum += d.redeemed - d.invested;
+    labels.push(d.date.slice(5));
+    data.push(parseFloat(cum.toFixed(2)));
+  }
+  if (cumulativePnlChart) cumulativePnlChart.destroy();
+  cumulativePnlChart = new Chart(document.getElementById('cumulativePnlChart').getContext('2d'), {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Cumulative PnL ($)',
+        data,
+        borderColor: '#3b82f6',
+        backgroundColor: 'rgba(59,130,246,0.08)',
+        pointBackgroundColor: data.map(v => v >= 0 ? '#10b981' : '#ef4444'),
+        pointRadius: 4,
+        fill: true,
+        tension: 0.3,
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { color: '#6b7280', font: { size: 10 } }, grid: { display: false } },
+        y: { ticks: { color: '#6b7280', callback: v => '$' + v.toFixed(2) }, grid: { color: '#1f2937' } }
+      }
+    }
+  });
+}
+
+function renderAssetWinRate(act) {
+  if (!act || !act.byAsset) return;
+  const assets  = act.byAsset.map(a => a.asset);
+  const wins    = act.byAsset.map(a => a.wins);
+  const losses  = act.byAsset.map(a => Math.max(0, a.bets - a.wins));
+  if (assetWinRateChart) assetWinRateChart.destroy();
+  assetWinRateChart = new Chart(document.getElementById('assetWinRateChart').getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels: assets,
+      datasets: [
+        { label: 'Wins',   data: wins,   backgroundColor: '#10b981', borderRadius: 3 },
+        { label: 'Losses', data: losses, backgroundColor: '#ef4444', borderRadius: 3 },
+      ]
+    },
+    options: {
+      responsive: true,
+      scales: {
+        x: { stacked: true, ticks: { color: '#6b7280' }, grid: { display: false } },
+        y: { stacked: true, ticks: { color: '#6b7280' }, grid: { color: '#1f2937' } }
+      },
+      plugins: { legend: { position: 'bottom', labels: { color: '#9ca3af', padding: 12 } } }
+    }
+  });
+}
+
+// Fetch and render redeemable positions.
+async function fetchRedeemable() {
+  try {
+    const res = await fetch('/api/redeemable');
+    const positions = await res.json();
+    const section = document.getElementById('redeemSection');
+    if (!positions || positions.error || positions.length === 0) {
+      section.style.display = 'none';
+      return;
+    }
+    section.style.display = 'block';
+    document.getElementById('redeemCount').textContent = `(${positions.length})`;
+    // Redeemable positions are won — each share redeems for $1 USDC.
+    const totalValue = positions.reduce((sum, p) => sum + p.size, 0);
+    document.getElementById('redeemValue').textContent = `~ $${totalValue.toFixed(2)} USDC`;
+    const tbody = document.getElementById('redeemBody');
+    tbody.innerHTML = positions.map(p => {
+      const title = p.title || p.conditionId.slice(0, 20) + '...';
+      return `<tr>
+        <td style="max-width:350px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${p.title}">${title}</td>
+        <td>${p.size.toFixed(2)}</td>
+        <td class="green">$${p.size.toFixed(2)}</td>
+        <td><span class="badge badge-redeem">REDEEMABLE</span></td>
+      </tr>`;
+    }).join('');
+  } catch (e) {
+    console.error('Fetch redeemable error:', e);
+  }
+}
+
+async function redeemAll() {
+  const btn = document.getElementById('redeemBtn');
+  const status = document.getElementById('redeemStatus');
+  btn.disabled = true;
+  btn.textContent = 'Redeeming...';
+  status.className = 'redeem-status info';
+  status.textContent = 'Submitting redemption transactions to the Polymarket relayer...';
+  status.style.display = 'block';
+
+  try {
+    const res = await fetch('/api/redeem', { method: 'POST' });
+    const data = await res.json();
+
+    if (data.error) {
+      status.className = 'redeem-status error';
+      status.textContent = 'Error: ' + data.error;
+    } else if (data.message) {
+      status.className = 'redeem-status info';
+      status.textContent = data.message;
+    } else if (Array.isArray(data)) {
+      const succeeded = data.filter(r => r.success).length;
+      const failed = data.filter(r => !r.success).length;
+      if (failed === 0) {
+        status.className = 'redeem-status success';
+        status.textContent = `Successfully submitted ${succeeded} redemption(s)! USDC will arrive in your wallet shortly.`;
+      } else {
+        status.className = 'redeem-status error';
+        const errors = data.filter(r => !r.success).map(r => `${r.title || r.conditionId}: ${r.error}`).join('; ');
+        status.textContent = `${succeeded} succeeded, ${failed} failed: ${errors}`;
+      }
+    }
+    // Refresh data after redemption.
+    setTimeout(() => { fetchData(); fetchRedeemable(); }, 5000);
+  } catch (e) {
+    status.className = 'redeem-status error';
+    status.textContent = 'Request failed: ' + e.message;
+  }
+  btn.disabled = false;
+  btn.textContent = 'Redeem All';
+}
+
+// Initial load + auto-refresh every 15s.
+fetchData();
+// fetchRedeemable(); // disabled — Polymarket handles redemption in V2
+setInterval(fetchData, 30000);
+// setInterval(fetchRedeemable, 30000);
+</script>
+</body>
+</html>

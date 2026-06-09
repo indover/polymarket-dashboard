@@ -1,0 +1,20 @@
+# Secrets — never commit these
+.env
+.env.*
+!.env.example
+
+# Compiled Go binaries
+/polymarket-dashboard
+/dashboard
+*.exe
+*.test
+*.out
+
+# Editor / OS junk
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Claude Code local settings (may contain wallet addresses in allow-list)
+.claude/
