@@ -6,7 +6,9 @@ A self-hosted Go dashboard for tracking your [Polymarket](https://polymarket.com
 
 ## Screenshots
 
-![Dashboard](docs/dashboard.png)
+![Dashboard overview](docs/1.png)
+![Positions and PnL](docs/2.png)
+![Trade history](docs/3.png)
 
 ## Features
 
