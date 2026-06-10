@@ -232,7 +232,9 @@
     </div>
   </div>
 
-  <!-- Redeemable Positions — disabled; Polymarket handles redemption in V2.
+  <!-- Redeemable Positions — manual claim button for instant redeem.
+       Polymarket V2 auto-redeems winners on the proxy with delay; this lets
+       you claim immediately. Requires POLYMARKET_PRIVATE_KEY in .env. -->
   <div class="table-section" id="redeemSection" style="display:none;">
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
       <h3>Redeemable Positions <span id="redeemCount" class="gray"></span> <span id="redeemValue" class="green"></span></h3>
@@ -251,8 +253,6 @@
     </table>
     <div id="redeemStatus" class="redeem-status"></div>
   </div>
-  -->
-  <div id="redeemSection" style="display:none;"></div>
 
   <!-- Wallet -->
   <div class="table-section">
@@ -1029,11 +1029,11 @@ async function redeemAll() {
   btn.textContent = 'Redeem All';
 }
 
-// Initial load + auto-refresh every 15s.
+// Initial load + auto-refresh every 30s.
 fetchData();
-// fetchRedeemable(); // disabled — Polymarket handles redemption in V2
+fetchRedeemable();
 setInterval(fetchData, 30000);
-// setInterval(fetchRedeemable, 30000);
+setInterval(fetchRedeemable, 30000);
 </script>
 </body>
 </html>

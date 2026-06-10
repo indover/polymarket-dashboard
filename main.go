@@ -264,51 +264,53 @@ func main() {
 		json.NewEncoder(w).Encode(result)
 	})
 
-	// Redeem endpoints disabled — Polymarket handles redemption natively in V2.
-	// http.HandleFunc("/api/redeemable", func(w http.ResponseWriter, r *http.Request) {
-	// 	positions, err := fetchRedeemablePositions(cfg.Address)
-	// 	w.Header().Set("Content-Type", "application/json")
-	// 	if err != nil {
-	// 		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
-	// 		return
-	// 	}
-	// 	var wins []RedeemablePosition
-	// 	for _, pos := range positions {
-	// 		winnerIdx, resolved := checkResolution(pos.ConditionID)
-	// 		if resolved && winnerIdx == pos.OutcomeIndex {
-	// 			wins = append(wins, pos)
-	// 		}
-	// 	}
-	// 	json.NewEncoder(w).Encode(wins)
-	// })
-	//
-	// http.HandleFunc("/api/redeem", func(w http.ResponseWriter, r *http.Request) {
-	// 	if r.Method != http.MethodPost {
-	// 		http.Error(w, "POST only", http.StatusMethodNotAllowed)
-	// 		return
-	// 	}
-	// 	w.Header().Set("Content-Type", "application/json")
-	// 	if cfg.PrivateKey == nil {
-	// 		json.NewEncoder(w).Encode(map[string]string{"error": "No POLYMARKET_PRIVATE_KEY configured"})
-	// 		return
-	// 	}
-	// 	rcfg := RedeemConfig{
-	// 		PrivateKey: cfg.PrivateKey,
-	// 		SignerAddr: cfg.Address,
-	// 	}
-	// 	redeemMu.Lock()
-	// 	results, err := redeemAll(rcfg)
-	// 	redeemMu.Unlock()
-	// 	if err != nil {
-	// 		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
-	// 		return
-	// 	}
-	// 	if results == nil {
-	// 		json.NewEncoder(w).Encode(map[string]string{"message": "No positions to redeem"})
-	// 		return
-	// 	}
-	// 	json.NewEncoder(w).Encode(results)
-	// })
+	// Manual redeem endpoints. Polymarket V2 auto-redeems winners on the proxy,
+	// but with delay (sometimes hours). These endpoints give users a button to
+	// claim instantly without waiting.
+	http.HandleFunc("/api/redeemable", func(w http.ResponseWriter, r *http.Request) {
+		positions, err := fetchRedeemablePositions(cfg.Address)
+		w.Header().Set("Content-Type", "application/json")
+		if err != nil {
+			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			return
+		}
+		var wins []RedeemablePosition
+		for _, pos := range positions {
+			winnerIdx, resolved := checkResolution(pos.ConditionID)
+			if resolved && winnerIdx == pos.OutcomeIndex {
+				wins = append(wins, pos)
+			}
+		}
+		json.NewEncoder(w).Encode(wins)
+	})
+
+	http.HandleFunc("/api/redeem", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "POST only", http.StatusMethodNotAllowed)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if cfg.PrivateKey == nil {
+			json.NewEncoder(w).Encode(map[string]string{"error": "No POLYMARKET_PRIVATE_KEY configured"})
+			return
+		}
+		rcfg := RedeemConfig{
+			PrivateKey: cfg.PrivateKey,
+			SignerAddr: cfg.Address,
+		}
+		redeemMu.Lock()
+		results, err := redeemAll(rcfg)
+		redeemMu.Unlock()
+		if err != nil {
+			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			return
+		}
+		if results == nil {
+			json.NewEncoder(w).Encode(map[string]string{"message": "No positions to redeem"})
+			return
+		}
+		json.NewEncoder(w).Encode(results)
+	})
 
 	// Serve the dashboard HTML.
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {

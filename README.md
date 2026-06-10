@@ -49,7 +49,7 @@ Open <http://localhost:8080>.
 | `POLYMARKET_PROXY_ADDRESS` | Your V2 Polymarket proxy — holds pUSD and owns V2 trades | Find it on PolygonScan: look at any V2 trade tx, find the address that receives pUSD in the ERC-20 transfer trace |
 | `CLOB_API_KEY` / `CLOB_SECRET` / `CLOB_PASSPHRASE` | CLOB API credentials | Auto-created on first login at <https://polymarket.com>; export from the dev console or generate via the SDK |
 
-`POLYMARKET_PRIVATE_KEY`, `RELAYER_API_KEY*` are optional — only needed if you re-enable the (currently commented-out) redemption path. Polymarket V2 auto-redeems winning positions, so you usually don't need them.
+`POLYMARKET_PRIVATE_KEY` is optional — only needed if you want the **manual "Redeem All"** button (instant claim of winning V1 positions). Polymarket V2 auto-redeems winners on the proxy by itself, but with delay; the button lets you skip the wait. `RELAYER_API_KEY*` are unused in current code.
 
 ## Endpoints
 
