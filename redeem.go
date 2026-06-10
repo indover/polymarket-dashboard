@@ -64,6 +64,9 @@ type RedeemResult struct {
 }
 
 // RedeemablePosition is a position from the data API that can be redeemed.
+// CanClaim is true only for positions held directly on the EOA (V1 USDC.e era).
+// V2 proxy-held positions auto-redeem on Polymarket's side; we can't sign them
+// here because the proxy is a Safe-style wallet that needs a different flow.
 type RedeemablePosition struct {
 	ConditionID  string  `json:"conditionId"`
 	Title        string  `json:"title"`
@@ -74,6 +77,8 @@ type RedeemablePosition struct {
 	CurPrice     float64 `json:"curPrice"`
 	CurrentValue float64 `json:"currentValue"`
 	ProxyWallet  string  `json:"proxyWallet"`
+	CanClaim     bool    `json:"canClaim"`
+	EventSlug    string  `json:"eventSlug"`
 }
 
 // fetchRedeemablePositions pages through ALL redeemable positions (100 per page).

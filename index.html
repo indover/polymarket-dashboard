@@ -958,8 +958,10 @@ function renderAssetWinRate(act) {
   });
 }
 
-// Fetch and render redeemable positions. Section is always visible so the
-// Redeem button stays discoverable; shows an empty state when nothing to claim.
+// Fetch and render redeemable positions across both wallets:
+//  - V1 (EOA) wins: this button can claim them via /api/redeem
+//  - V2 (proxy) wins: shown for visibility; auto-redeem handles them, or
+//    user can click through to polymarket.com to claim manually
 async function fetchRedeemable() {
   const section = document.getElementById('redeemSection');
   section.style.display = 'block';
@@ -973,22 +975,34 @@ async function fetchRedeemable() {
     if (!positions || positions.error || positions.length === 0) {
       countEl.textContent = '(0)';
       valueEl.textContent = '';
-      tbody.innerHTML = '<tr><td colspan="4" class="gray" style="text-align:center;padding:18px">Nothing to claim. V2 auto-redeem handles wins on the proxy; this button only redeems V1 (EOA) winners.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="4" class="gray" style="text-align:center;padding:18px">No winning positions waiting. V2 auto-redeem handles winners on the proxy within a few hours.</td></tr>';
       btn.disabled = true;
       return;
     }
-    btn.disabled = false;
-    countEl.textContent = `(${positions.length})`;
-    // Redeemable positions are won — each share redeems for $1 USDC.
+    const claimable = positions.filter(p => p.canClaim);
+    const pending   = positions.filter(p => !p.canClaim);
     const totalValue = positions.reduce((sum, p) => sum + p.size, 0);
-    valueEl.textContent = `~ $${totalValue.toFixed(2)} USDC`;
+    const claimValue = claimable.reduce((sum, p) => sum + p.size, 0);
+
+    countEl.textContent = `(${positions.length})`;
+    valueEl.textContent = pending.length
+      ? `~ $${totalValue.toFixed(2)} total · $${claimValue.toFixed(2)} claimable now`
+      : `~ $${totalValue.toFixed(2)} USDC`;
+    btn.disabled = claimable.length === 0;
+
     tbody.innerHTML = positions.map(p => {
       const title = p.title || p.conditionId.slice(0, 20) + '...';
+      const badge = p.canClaim
+        ? '<span class="badge badge-redeem">REDEEMABLE</span>'
+        : '<span class="badge" style="background:#f59e0b1a;color:#f59e0b">AUTO-REDEEM PENDING</span>';
+      const link = p.eventSlug
+        ? ` <a href="https://polymarket.com/event/${p.eventSlug}" target="_blank" rel="noopener" class="gray" style="margin-left:6px">claim ↗</a>`
+        : '';
       return `<tr>
         <td style="max-width:350px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${p.title}">${title}</td>
         <td>${p.size.toFixed(2)}</td>
         <td class="green">$${p.size.toFixed(2)}</td>
-        <td><span class="badge badge-redeem">REDEEMABLE</span></td>
+        <td>${badge}${p.canClaim ? '' : link}</td>
       </tr>`;
     }).join('');
   } catch (e) {

@@ -268,20 +268,50 @@ func main() {
 	// but with delay (sometimes hours). These endpoints give users a button to
 	// claim instantly without waiting.
 	http.HandleFunc("/api/redeemable", func(w http.ResponseWriter, r *http.Request) {
-		positions, err := fetchRedeemablePositions(cfg.Address)
 		w.Header().Set("Content-Type", "application/json")
-		if err != nil {
-			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
-			return
+
+		// Fetch redeemables from EOA and proxy in parallel.
+		addrs := []struct {
+			addr     string
+			canClaim bool
+		}{
+			{cfg.Address, true},        // V1 EOA positions — button can redeem these
+			{cfg.ProxyAddress, false},  // V2 proxy positions — auto-redeem on Polymarket
 		}
-		var wins []RedeemablePosition
-		for _, pos := range positions {
-			winnerIdx, resolved := checkResolution(pos.ConditionID)
-			if resolved && winnerIdx == pos.OutcomeIndex {
-				wins = append(wins, pos)
+		results := make([][]RedeemablePosition, len(addrs))
+		var wg sync.WaitGroup
+		for i, a := range addrs {
+			if a.addr == "" {
+				continue
 			}
+			wg.Add(1)
+			go func(i int, addr string, canClaim bool) {
+				defer wg.Done()
+				positions, err := fetchRedeemablePositions(addr)
+				if err != nil {
+					return
+				}
+				var wins []RedeemablePosition
+				for _, pos := range positions {
+					if pos.CurrentValue <= 0 {
+						continue // skip worthless losing tickets
+					}
+					winnerIdx, resolved := checkResolution(pos.ConditionID)
+					if resolved && winnerIdx == pos.OutcomeIndex {
+						pos.CanClaim = canClaim
+						wins = append(wins, pos)
+					}
+				}
+				results[i] = wins
+			}(i, a.addr, a.canClaim)
 		}
-		json.NewEncoder(w).Encode(wins)
+		wg.Wait()
+
+		var allWins []RedeemablePosition
+		for _, ws := range results {
+			allWins = append(allWins, ws...)
+		}
+		json.NewEncoder(w).Encode(allWins)
 	})
 
 	http.HandleFunc("/api/redeem", func(w http.ResponseWriter, r *http.Request) {
