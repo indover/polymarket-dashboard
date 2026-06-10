@@ -958,22 +958,30 @@ function renderAssetWinRate(act) {
   });
 }
 
-// Fetch and render redeemable positions.
+// Fetch and render redeemable positions. Section is always visible so the
+// Redeem button stays discoverable; shows an empty state when nothing to claim.
 async function fetchRedeemable() {
+  const section = document.getElementById('redeemSection');
+  section.style.display = 'block';
+  const btn = document.getElementById('redeemBtn');
+  const tbody = document.getElementById('redeemBody');
+  const countEl = document.getElementById('redeemCount');
+  const valueEl = document.getElementById('redeemValue');
   try {
     const res = await fetch('/api/redeemable');
     const positions = await res.json();
-    const section = document.getElementById('redeemSection');
     if (!positions || positions.error || positions.length === 0) {
-      section.style.display = 'none';
+      countEl.textContent = '(0)';
+      valueEl.textContent = '';
+      tbody.innerHTML = '<tr><td colspan="4" class="gray" style="text-align:center;padding:18px">Nothing to claim. V2 auto-redeem handles wins on the proxy; this button only redeems V1 (EOA) winners.</td></tr>';
+      btn.disabled = true;
       return;
     }
-    section.style.display = 'block';
-    document.getElementById('redeemCount').textContent = `(${positions.length})`;
+    btn.disabled = false;
+    countEl.textContent = `(${positions.length})`;
     // Redeemable positions are won — each share redeems for $1 USDC.
     const totalValue = positions.reduce((sum, p) => sum + p.size, 0);
-    document.getElementById('redeemValue').textContent = `~ $${totalValue.toFixed(2)} USDC`;
-    const tbody = document.getElementById('redeemBody');
+    valueEl.textContent = `~ $${totalValue.toFixed(2)} USDC`;
     tbody.innerHTML = positions.map(p => {
       const title = p.title || p.conditionId.slice(0, 20) + '...';
       return `<tr>
